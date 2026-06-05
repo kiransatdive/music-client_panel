@@ -393,15 +393,15 @@ export default function Releases() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setViewReleaseId(release.id)}
-                    className="text-xs font-semibold text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors mr-2"
+                    className="text-xs font-semibold flex items-center gap-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors mr-2"
                   >
-                    View
+                    <Eye size={14} /> View
                   </button>
                   <Link
                     to={`/releases/${release.id}`}
-                    className="text-xs font-semibold text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 transition-colors"
+                    className="text-xs font-semibold flex items-center gap-1 text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 transition-colors"
                   >
-                    Edit
+                    <Pencil size={14} /> Update
                   </Link>
                   <button
                     onClick={() => handleDeleteRelease(release.id, release.title)}
@@ -505,7 +505,7 @@ export default function Releases() {
                   <Link
                     to={`/releases/${release.id}`}
                     className="text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors p-1"
-                    title="Edit Release"
+                    title="Update Release"
                   >
                     <Pencil size={16} />
                   </Link>

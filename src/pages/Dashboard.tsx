@@ -10,16 +10,16 @@ interface DashboardStats {
   totalReleases: number;
   pendingReleases: number;
   totalRevenue: number;
-  recentStreams: number;
+  liveReleases: number;
 }
 
 const mockChartData = [
-  { month: 'Jan', streams: 4000, revenue: 240 },
-  { month: 'Feb', streams: 5000, revenue: 300 },
-  { month: 'Mar', streams: 6500, revenue: 420 },
-  { month: 'Apr', streams: 8000, revenue: 510 },
-  { month: 'May', streams: 9500, revenue: 680 },
-  { month: 'Jun', streams: 12000, revenue: 850 },
+  { month: 'Jan', liveReleases: 4000, revenue: 240 },
+  { month: 'Feb', liveReleases: 5000, revenue: 300 },
+  { month: 'Mar', liveReleases: 6500, revenue: 420 },
+  { month: 'Apr', liveReleases: 8000, revenue: 510 },
+  { month: 'May', liveReleases: 9500, revenue: 680 },
+  { month: 'Jun', liveReleases: 12000, revenue: 850 },
 ];
 
 export default function Dashboard() {
@@ -28,9 +28,10 @@ export default function Dashboard() {
     totalReleases: 0,
     pendingReleases: 0,
     totalRevenue: 0,
-    recentStreams: 0,
+    liveReleases: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState<any[]>(mockChartData);
 
   useEffect(() => {
     fetchStats();
@@ -47,7 +48,51 @@ export default function Dashboard() {
           ...prev,
           totalReleases: response.data.data.total || 0,
           pendingReleases: response.data.data.pending_review || 0,
+          totalRevenue: response.data.data.total_income || 0,
+          liveReleases: response.data.data.live || 0,
         }));
+
+        const { monthwiseRevenue = [], monthwiseLiveReleases = [] } = response.data.data;
+        if (monthwiseRevenue.length > 0 || monthwiseLiveReleases.length > 0) {
+          const dataMap = new Map<string, { month: string; liveReleases: number; revenue: number; timestamp: number }>();
+          
+          const getMonthInfo = (m: string) => {
+            let date = new Date();
+            if (/^\d+$/.test(m)) {
+              date = new Date(1899, 11, 30);
+              date.setDate(date.getDate() + parseInt(m, 10));
+            } else {
+              date = new Date(m + '-01');
+            }
+            if (isNaN(date.getTime())) {
+              return { label: m, timestamp: 0 };
+            }
+            return {
+              label: date.toLocaleString('default', { month: 'short' }) + ' ' + date.getFullYear().toString().slice(-2),
+              timestamp: date.getTime(),
+            };
+          };
+
+          monthwiseRevenue.forEach((item: any) => {
+            if (!item.month) return;
+            const { label, timestamp } = getMonthInfo(item.month);
+            if (!dataMap.has(label)) {
+              dataMap.set(label, { month: label, liveReleases: 0, revenue: 0, timestamp });
+            }
+            dataMap.get(label)!.revenue += parseFloat(item.revenue) || 0;
+          });
+
+          monthwiseLiveReleases.forEach((item: any) => {
+            if (!item.month) return;
+            const { label, timestamp } = getMonthInfo(item.month);
+            if (!dataMap.has(label)) {
+              dataMap.set(label, { month: label, liveReleases: 0, revenue: 0, timestamp });
+            }
+            dataMap.get(label)!.liveReleases += parseInt(item.count) || 0;
+          });
+
+          setChartData(Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp));
+        }
       }
     } catch (error) {
       console.error('Failed to fetch stats');
@@ -92,12 +137,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl md:min-w-[200px] flex-shrink-0">
-            <span className="text-xs text-rose-100 uppercase tracking-wider font-semibold">Wallet Balance</span>
-            <div className="text-3xl font-extrabold mt-1">
-              ${(stats.totalRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -150,8 +190,8 @@ export default function Dashboard() {
             <div className="card hover:translate-y-[-2px]">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-slate-400 dark:text-slate-500 text-xs font-semibold uppercase tracking-wider">Total Streams</span>
-                  <p className="text-3xl font-extrabold mt-1 text-slate-800 dark:text-white">{stats.recentStreams.toLocaleString()}</p>
+                  <span className="text-slate-400 dark:text-slate-500 text-xs font-semibold uppercase tracking-wider">Live Releases</span>
+                  <p className="text-3xl font-extrabold mt-1 text-slate-800 dark:text-white">{stats.liveReleases}</p>
                 </div>
                 <div className="h-12 w-12 rounded-xl bg-violet-50 dark:bg-violet-950/20 flex items-center justify-center text-violet-500">
                   <TrendingUp className="h-6 w-6" />
@@ -169,7 +209,7 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center gap-4 text-xs font-semibold">
                 <span className="flex items-center gap-1.5 text-slate-500">
-                  <span className="h-3 w-3 rounded-full bg-rose-500"></span> Streams
+                  <span className="h-3 w-3 rounded-full bg-rose-500"></span> Live Releases
                 </span>
                 <span className="flex items-center gap-1.5 text-slate-500">
                   <span className="h-3 w-3 rounded-full bg-violet-500"></span> Revenue
@@ -178,7 +218,7 @@ export default function Dashboard() {
             </div>
             <div className="h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={mockChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorStreams" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#00aeef" stopOpacity={0.2} />
@@ -201,7 +241,7 @@ export default function Dashboard() {
                       fontSize: '13px'
                     }}
                   />
-                  <Area type="monotone" dataKey="streams" stroke="#00aeef" strokeWidth={3} fillOpacity={1} fill="url(#colorStreams)" />
+                  <Area type="monotone" dataKey="liveReleases" stroke="#00aeef" strokeWidth={3} fillOpacity={1} fill="url(#colorStreams)" />
                   <Area type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
               </ResponsiveContainer>

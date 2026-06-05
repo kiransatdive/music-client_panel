@@ -92,7 +92,9 @@ export default function Profile() {
 
   const loadArtistData = async () => {
     try {
-      const response = await axios.get('/api/artist/profile');
+      const token = localStorage.getItem('token');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      const response = await axios.get(`${getBackendUrl()}/api/artist/profile`, config);
       const artist = response.data?.data?.artist;
       if (artist) {
         setProfileData({
@@ -148,7 +150,9 @@ export default function Profile() {
       
       if (profileImage) data.append('profileImage', profileImage);
 
-      const response = await axios.put('/api/artist/profile', data);
+      const token = localStorage.getItem('token');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      const response = await axios.put(`${getBackendUrl()}/api/artist/profile`, data, config);
       
       // Update local state with the returned data from PUT request
       const updatedArtist = response.data?.data?.artist;
@@ -177,7 +181,9 @@ export default function Profile() {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await axios.put('/api/artist/profile', {
+      const token = localStorage.getItem('token');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      const response = await axios.put(`${getBackendUrl()}/api/artist/profile`, {
         // camelCase fields
         bankName: bankData.bank_name,
         accountNumber: bankData.account_number,
@@ -192,7 +198,7 @@ export default function Profile() {
         ifsc_code: bankData.routing_number,
         branch_name: bankData.branch_name,
         upi_id: bankData.upi_id,
-      });
+      }, config);
 
       // Update local state with the returned data from PUT request
       const updatedArtist = response.data?.data?.artist;

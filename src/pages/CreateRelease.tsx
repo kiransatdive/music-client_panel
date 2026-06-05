@@ -4,9 +4,9 @@ import { useForm } from 'react-hook-form';
 import axios from 'axios';
 import { getBackendUrl } from '../utils/config';
 import {
-  FileText, Music, Upload, Globe, CheckCircle,
+  FileText, Music, Upload, CheckCircle, Globe,
   ChevronRight, ChevronLeft, RotateCcw, XCircle, Loader2, Info, Sparkles,
-  Play, Pause, Trash2, Image, Check, Volume2, UploadCloud
+  Play, Pause, Trash2, Image, Check, Volume2, UploadCloud, Save, Pencil
 } from 'lucide-react';
 
 interface ReleaseFormInputs {
@@ -31,18 +31,6 @@ const POPULAR_LANGUAGES = [
   'Portuguese', 'Italian', 'Russian', 'Arabic', 'Tamil'
 ];
 
-const DSP_PLATFORMS = [
-  { id: 'spotify', name: 'Spotify', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' },
-  { id: 'apple_music', name: 'Apple Music', color: 'bg-rose-500/10 text-rose-500 border-rose-500/20' },
-  { id: 'youtube_music', name: 'YouTube Music', color: 'bg-red-500/10 text-red-500 border-red-500/20' },
-  { id: 'amazon_music', name: 'Amazon Music', color: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20' },
-  { id: 'deezer', name: 'Deezer', color: 'bg-purple-500/10 text-purple-500 border-purple-500/20' },
-  { id: 'tiktok', name: 'TikTok', color: 'bg-slate-500/10 text-slate-700 dark:text-slate-350 border-slate-500/20' },
-  { id: 'pandora', name: 'Pandora', color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
-  { id: 'tidal', name: 'Tidal', color: 'bg-teal-500/10 text-teal-500 border-teal-500/20' },
-  { id: 'shazam', name: 'Shazam', color: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' }
-];
-
 export default function CreateRelease() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -59,7 +47,6 @@ export default function CreateRelease() {
   const [tracks, setTracks] = useState<any[]>([]);
   const [pendingTracks, setPendingTracks] = useState<any[]>([]);
   const [artworkUrl, setArtworkUrl] = useState<string>('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
 
   // Upload States
   const [artworkFile, setArtworkFile] = useState<File | null>(null);
@@ -76,12 +63,30 @@ export default function CreateRelease() {
   // Audio Playback Preview State
   const [playingTrackId, setPlayingTrackId] = useState<number | string | null>(null);
 
+  // Update Track Modal State
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [updateTrackData, setUpdateTrackData] = useState<any>(null);
+  const [updateTrackFile, setUpdateTrackFile] = useState<File | null>(null);
+  const [updateTrackTitle, setUpdateTrackTitle] = useState('');
+  const [updateIsrc, setUpdateIsrc] = useState('');
+  const [updateLyrics, setUpdateLyrics] = useState('');
+  const [updateFeaturedArtists, setUpdateFeaturedArtists] = useState('');
+  const [isUpdatingTrack, setIsUpdatingTrack] = useState(false);
+  const [updateTrackProgress, setUpdateTrackProgress] = useState(0);
+  const [removeExistingAudio, setRemoveExistingAudio] = useState(false);
+
   // Submit agreement fields
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isOriginalContent, setIsOriginalContent] = useState(false);
   const [containsThirdPartySamples, setContainsThirdPartySamples] = useState(false);
   const [selectedYoutubeCriteria, setSelectedYoutubeCriteria] = useState<number[]>([]);
   const [youtubeCriteriaList, setYoutubeCriteriaList] = useState<{ id: number; text: string }[]>([]);
+
+  // Platforms State
+  const [availablePlatforms, setAvailablePlatforms] = useState<any[]>([]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<number[]>([]);
+  const [platformsLoading, setPlatformsLoading] = useState(false);
+  const [platformsSaving, setPlatformsSaving] = useState(false);
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -93,7 +98,7 @@ export default function CreateRelease() {
     { number: 1, name: 'Release Details', desc: 'Title, Genre & Basic Metadata', icon: FileText, active: currentStep === 1 },
     { number: 2, name: 'Upload Tracks', desc: 'WAV Audio Files', icon: Music, active: currentStep === 2 },
     { number: 3, name: 'Upload Artwork', desc: 'Square JPG/PNG image', icon: Upload, active: currentStep === 3 },
-    { number: 4, name: 'Distribution Platforms', desc: 'Select Stores & Channels', icon: Globe, active: currentStep === 4 },
+    { number: 4, name: 'Select Platforms', desc: 'Distribution Platforms', icon: Globe, active: currentStep === 4 },
     { number: 5, name: 'Review & Submit', desc: 'Final Verification', icon: CheckCircle, active: currentStep === 5 },
   ];
 
@@ -138,7 +143,7 @@ export default function CreateRelease() {
   useEffect(() => {
     const fetchCriteria = async () => {
       try {
-        const response = await axios.get('/api/youtube-criteria');
+        const response = await axios.get(`${getBackendUrl()}/api/youtube-criteria`);
         let criteriaArray = [];
         if (response.data) {
           if (Array.isArray(response.data)) {
@@ -161,6 +166,26 @@ export default function CreateRelease() {
       }
     };
     fetchCriteria();
+  }, []);
+
+  // Fetch available platforms on mount
+  useEffect(() => {
+    const fetchPlatforms = async () => {
+      setPlatformsLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        const reqConfig = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+        const response = await axios.get(`${getBackendUrl()}/api/platforms`, reqConfig);
+        if (response.data && response.data.success && response.data.data) {
+          setAvailablePlatforms(response.data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch platforms from API:', err);
+      } finally {
+        setPlatformsLoading(false);
+      }
+    };
+    fetchPlatforms();
   }, []);
 
   // Load existing release details if ID in URL
@@ -204,7 +229,7 @@ export default function CreateRelease() {
     try {
       const token = localStorage.getItem('token');
       const reqConfig = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      const response = await axios.get(`/api/releases/${activeId}`, reqConfig);
+      const response = await axios.get(`${getBackendUrl()}/api/releases/${activeId}`, reqConfig);
 
       if (response.data) {
         const rawData = response.data;
@@ -253,24 +278,15 @@ export default function CreateRelease() {
             setArtworkUrl('');
           }
 
-          // Setup platforms
-          const rawPlatforms = release.distribution_platforms || release.platforms;
-          if (rawPlatforms) {
-            try {
-              const platforms = typeof rawPlatforms === 'string'
-                ? JSON.parse(rawPlatforms)
-                : rawPlatforms;
-              setSelectedPlatforms(platforms || []);
-            } catch (e) {
-              setSelectedPlatforms([]);
-            }
-          }
-
           // Prepopulate Step 5 agreements if returned
           setAgreeTerms(release.agree_terms || release.agreeTerms || false);
           setIsOriginalContent(release.is_original_content || release.isOriginalContent || false);
           setContainsThirdPartySamples(release.contains_third_party_samples || release.containsThirdPartySamples || false);
           
+          if (release.platforms && Array.isArray(release.platforms)) {
+            setSelectedPlatforms(release.platforms.map((p: any) => p.id));
+          }
+
           const rawYoutube = release.youtube_criteria_ids || release.youtubeCriteriaIds;
           if (rawYoutube) {
             try {
@@ -308,7 +324,7 @@ export default function CreateRelease() {
 
       if (activeId) {
         // Update release details
-        const response = await axios.put(`/api/releases/${activeId}`, {
+        const response = await axios.put(`${getBackendUrl()}/api/releases/${activeId}`, {
           title: data.title,
           genre: data.genre,
           language: data.language,
@@ -341,7 +357,7 @@ export default function CreateRelease() {
         }
       } else {
         // Create release details
-        const response = await axios.post('/api/releases', {
+        const response = await axios.post(`${getBackendUrl()}/api/releases`, {
           title: data.title,
           genre: data.genre,
           language: data.language,
@@ -405,12 +421,16 @@ export default function CreateRelease() {
       for (let i = 0; i < pendingTracks.length; i++) {
         const tr = pendingTracks[i];
         const formData = new FormData();
+        const finalIsrc = (pendingTracks.length === 1 && isrc) ? isrc : tr.isrc;
+        const finalLyrics = (pendingTracks.length === 1 && lyrics) ? lyrics : tr.lyrics;
+        const finalArtists = (pendingTracks.length === 1 && featuredArtists) ? featuredArtists : tr.featuredArtists;
+
         formData.append('track', tr.file);
         formData.append('trackTitle', tr.title);
         formData.append('title', tr.title);
-        formData.append('isrc', tr.isrc);
-        formData.append('lyrics', tr.lyrics);
-        formData.append('featuredArtists', tr.featuredArtists);
+        formData.append('isrc', finalIsrc);
+        formData.append('lyrics', finalLyrics);
+        formData.append('featuredArtists', finalArtists);
         formData.append('track_number', String(tracks.length + i + 1));
         formData.append('duration', String(tr.duration));
 
@@ -425,7 +445,7 @@ export default function CreateRelease() {
           }
         };
 
-        await axios.post(`/api/releases/${activeId}/tracks`, formData, uploadConfig);
+        await axios.post(`${getBackendUrl()}/api/releases/${activeId}/tracks`, formData, uploadConfig);
       }
 
       triggerToast('All tracks saved successfully!', 'success');
@@ -471,15 +491,8 @@ export default function CreateRelease() {
         }
       };
 
-      // Call POST /api/releases/:id/artwork (or update the release artwork)
-      let uploadResponse = null;
-      try {
-        uploadResponse = await axios.post(`/api/releases/${activeId}/artwork`, formData, uploadConfig);
-      } catch (artworkErr) {
-        console.warn("Direct artwork route failed, attempting update endpoint...", artworkErr);
-        // Fallback: Some systems support upload artwork via POST to releases/:id
-        uploadResponse = await axios.post(`/api/releases/${activeId}`, formData, uploadConfig);
-      }
+      // Call PUT /api/releases/:id/artwork
+      const uploadResponse = await axios.put(`${getBackendUrl()}/api/releases/${activeId}/artwork`, formData, uploadConfig);
 
       if (uploadResponse && uploadResponse.data) {
         let artworkPath = '';
@@ -502,7 +515,7 @@ export default function CreateRelease() {
         }
       }
 
-      triggerToast('Artwork uploaded successfully!', 'success');
+      triggerToast(uploadResponse?.data?.message || 'Artwork uploaded successfully!', 'success');
       setArtworkFile(null);
       if (artworkInputRef.current) artworkInputRef.current.value = '';
 
@@ -518,38 +531,39 @@ export default function CreateRelease() {
     }
   };
 
-  // Save Platforms
-  const handleSavePlatforms = async () => {
+  // Save and Next Platforms
+  const handleSaveAndNextPlatforms = async () => {
     const activeId = id || releaseId;
     if (!activeId) return;
 
     if (selectedPlatforms.length === 0) {
-      triggerToast('Please select at least one distribution platform', 'error');
+      triggerToast('Please select at least one distribution platform.', 'error');
       return;
     }
 
-    setLoading(true);
+    setPlatformsSaving(true);
     try {
       const token = localStorage.getItem('token');
       const reqConfig = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      
+      const payload = {
+        platformIds: selectedPlatforms
+      };
 
-      try {
-        await axios.put(`/api/releases/${activeId}`, {
-          distribution_platforms: selectedPlatforms
-        }, reqConfig);
-      } catch (putErr) {
-        // Fallback/Simulate success on 404
-        console.warn("PUT distribution platforms failed, simulating success locally", putErr);
+      const res = await axios.post(`${getBackendUrl()}/api/releases/${activeId}/platforms`, payload, reqConfig);
+      
+      if (res.data?.success || res.status === 200 || res.status === 201) {
+        triggerToast('Platforms selected successfully!', 'success');
+        setCurrentStep(5);
+      } else {
+        throw new Error(res.data?.message || 'Failed to save platforms');
       }
-
-      triggerToast('Distribution platforms saved!', 'success');
-      setCurrentStep(5);
     } catch (err: any) {
-      console.error(err);
-      triggerToast('Platforms selection updated!', 'success');
-      setCurrentStep(5);
+      console.error('Failed to save platforms:', err);
+      const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to save platforms';
+      triggerToast(errMsg, 'error');
     } finally {
-      setLoading(false);
+      setPlatformsSaving(false);
     }
   };
 
@@ -557,6 +571,11 @@ export default function CreateRelease() {
   const handleSubmitRelease = async () => {
     const activeId = id || releaseId;
     if (!activeId) return;
+
+    if (selectedYoutubeCriteria.length === 0) {
+      triggerToast('Please select at least one YouTube Content ID condition.', 'error');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -570,51 +589,20 @@ export default function CreateRelease() {
         youtubeCriteriaIds: selectedYoutubeCriteria
       };
 
-      let submitted = false;
-
-      // Attempt 1: Call POST /api/releases/:id/submit
-      try {
-        await axios.post(`/api/releases/${activeId}/submit`, submitPayload, reqConfig);
-        submitted = true;
-      } catch (e) {
-        console.warn("Submit endpoint failed, trying patch status fallback", e);
+      const res = await axios.post(`${getBackendUrl()}/api/releases/${activeId}/submit`, submitPayload, reqConfig);
+      
+      if (res.data?.success || res.status === 200 || res.status === 201) {
+        triggerToast(res.data?.message || 'Release submitted successfully for review!', 'success');
+        setTimeout(() => {
+          navigate('/releases');
+        }, 1500);
+      } else {
+        throw new Error(res.data?.message || 'Failed to submit release');
       }
-
-      // Attempt 2: Call PATCH /api/releases/:id/status
-      if (!submitted) {
-        try {
-          await axios.patch(`/api/releases/${activeId}/status`, { 
-            status: 'pending_review',
-            ...submitPayload
-          }, reqConfig);
-          submitted = true;
-        } catch (e) {
-          console.warn("PATCH status endpoint failed, trying put fallback", e);
-        }
-      }
-
-      // Attempt 3: Call PUT /api/releases/:id with status 'pending'
-      if (!submitted) {
-        try {
-          await axios.put(`/api/releases/${activeId}`, { 
-            status: 'pending_review',
-            ...submitPayload
-          }, reqConfig);
-        } catch (e) {
-          console.warn("PUT status endpoint failed, completing locally.", e);
-        }
-      }
-
-      triggerToast('Release submitted successfully for review!', 'success');
-      setTimeout(() => {
-        navigate('/releases');
-      }, 1500);
     } catch (err: any) {
-      console.error(err);
-      triggerToast('Release submitted successfully!', 'success');
-      setTimeout(() => {
-        navigate('/releases');
-      }, 1500);
+      console.error('Submit release failed:', err);
+      const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to submit release';
+      triggerToast(errMsg, 'error');
     } finally {
       setLoading(false);
     }
@@ -668,7 +656,7 @@ export default function CreateRelease() {
         const token = localStorage.getItem('token');
         const reqConfig = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
         
-        const response = await axios.delete(`/api/releases/${activeId}/tracks/${trackId}`, reqConfig);
+        const response = await axios.delete(`${getBackendUrl()}/api/releases/${activeId}/tracks/${trackId}`, reqConfig);
         
         if (response.data && response.data.success === false) {
            triggerToast(response.data.message || 'Failed to delete track', 'error');
@@ -730,6 +718,103 @@ export default function CreateRelease() {
     }
   };
 
+  const openUpdateModal = (track: any) => {
+    setUpdateTrackData(track);
+    setUpdateTrackTitle(track.title || track.trackTitle || '');
+    setUpdateIsrc(track.isrc || '');
+    setUpdateLyrics(track.lyrics || '');
+    setUpdateFeaturedArtists(track.featuredArtists || '');
+    setUpdateTrackFile(null);
+    setRemoveExistingAudio(false);
+    setIsUpdateModalOpen(true);
+  };
+
+  const closeUpdateModal = () => {
+    setIsUpdateModalOpen(false);
+    setUpdateTrackData(null);
+    setUpdateTrackFile(null);
+  };
+
+  const handleUpdateTrackSubmit = async () => {
+    if (!updateTrackTitle.trim()) {
+      triggerToast('Track title is required', 'error');
+      return;
+    }
+
+    if (removeExistingAudio && !updateTrackFile) {
+       triggerToast('Please select a new audio file or keep the existing one', 'error');
+       return;
+    }
+
+    if (updateTrackFile && !updateTrackFile.name.toLowerCase().endsWith('.wav')) {
+      triggerToast('Only WAV audio files are accepted', 'error');
+      return;
+    }
+
+    const activeId = id || releaseId;
+    if (!activeId || !updateTrackData) return;
+
+    if (updateTrackData.isPending) {
+      setPendingTracks(prev => prev.map(pt => {
+        if (pt.localId === updateTrackData.localId) {
+          return {
+            ...pt,
+            title: updateTrackTitle.trim(),
+            isrc: updateIsrc || '',
+            lyrics: updateLyrics || '',
+            featuredArtists: updateFeaturedArtists || '',
+            file: updateTrackFile || pt.file
+          };
+        }
+        return pt;
+      }));
+      triggerToast('Track updated successfully!', 'success');
+      closeUpdateModal();
+      return;
+    }
+
+    setIsUpdatingTrack(true);
+    setUpdateTrackProgress(0);
+
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('trackTitle', updateTrackTitle.trim());
+      formData.append('isrc', updateIsrc || '');
+      formData.append('lyrics', updateLyrics || '');
+      formData.append('featuredArtists', updateFeaturedArtists || '');
+
+      if (updateTrackFile) {
+        formData.append('track', updateTrackFile);
+      }
+
+      const uploadConfig = {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        onUploadProgress: (progressEvent: any) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUpdateTrackProgress(percentCompleted);
+          }
+        }
+      };
+
+      await axios.put(`${getBackendUrl()}/api/releases/${activeId}/tracks/${updateTrackData.id}`, formData, uploadConfig);
+
+      triggerToast('Track updated successfully!', 'success');
+      closeUpdateModal();
+      await fetchReleaseDetails(activeId);
+    } catch (err: any) {
+      console.error(err);
+      const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to update track';
+      triggerToast(errMsg, 'error');
+    } finally {
+      setIsUpdatingTrack(false);
+      setUpdateTrackProgress(0);
+    }
+  };
+
   const handleArtworkFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -758,7 +843,6 @@ export default function CreateRelease() {
       setReleaseId(null);
       setTracks([]);
       setArtworkUrl('');
-      setSelectedPlatforms([]);
       setCurrentStep(1);
       triggerToast('Form cleared successfully.', 'success');
     }
@@ -769,22 +853,6 @@ export default function CreateRelease() {
       setCurrentStep(stepNumber);
     } else {
       triggerToast('Please complete and save Release Details first.', 'error');
-    }
-  };
-
-  const togglePlatform = (platformId: string) => {
-    if (selectedPlatforms.includes(platformId)) {
-      setSelectedPlatforms(selectedPlatforms.filter(p => p !== platformId));
-    } else {
-      setSelectedPlatforms([...selectedPlatforms, platformId]);
-    }
-  };
-
-  const selectAllPlatforms = () => {
-    if (selectedPlatforms.length === DSP_PLATFORMS.length) {
-      setSelectedPlatforms([]);
-    } else {
-      setSelectedPlatforms(DSP_PLATFORMS.map(p => p.id));
     }
   };
 
@@ -1047,6 +1115,10 @@ export default function CreateRelease() {
                         <>
                           <Loader2 size={14} className="animate-spin" /> Saving...
                         </>
+                      ) : id ? (
+                        <>
+                          <Save size={14} /> Update Release
+                        </>
                       ) : (
                         <>
                           Save & Next <ChevronRight size={14} />
@@ -1200,6 +1272,17 @@ export default function CreateRelease() {
                           </div>
 
                           <div className="flex items-center gap-1">
+                            {!tr.isPending && (
+                              <button
+                                type="button"
+                                onClick={() => openUpdateModal(tr)}
+                                disabled={trackUploading}
+                                className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-gray-400 hover:text-emerald-500 rounded-lg transition-colors disabled:opacity-50"
+                                title="Edit Track"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => {
@@ -1340,7 +1423,7 @@ export default function CreateRelease() {
                     </>
                   ) : (
                     <>
-                      Save & Next: Stores <ChevronRight size={14} />
+                      Save & Next: Platforms <ChevronRight size={14} />
                     </>
                   )}
                 </button>
@@ -1348,50 +1431,73 @@ export default function CreateRelease() {
             </div>
           )}
 
-          {/* STEP 4: Distribution Platforms Form */}
+          {/* STEP 4: Select Platforms */}
           {currentStep === 4 && (
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700/80 p-6 space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/50">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <Globe className="text-rose-500" size={20} /> Distribution Stores
+                  <Globe className="text-rose-500" size={20} /> Select Distribution Platforms
                 </h2>
-                <button
-                  type="button"
-                  onClick={selectAllPlatforms}
-                  className="text-xs font-bold text-rose-500 hover:text-rose-600 transition-colors"
-                >
-                  {selectedPlatforms.length === DSP_PLATFORMS.length ? 'Deselect All' : 'Select All'}
-                </button>
+                <span className="text-[10px] bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full border border-blue-200/50 dark:border-blue-800/20 font-bold uppercase tracking-wider">
+                  Distribution
+                </span>
               </div>
 
-              {/* Grid Layout of Stores */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
-                {DSP_PLATFORMS.map((dsp) => {
-                  const isChecked = selectedPlatforms.includes(dsp.id);
-                  return (
-                    <div
-                      key={dsp.id}
-                      onClick={() => togglePlatform(dsp.id)}
-                      className={`border-2 rounded-xl p-4 cursor-pointer transition-all flex flex-col justify-between h-28 hover:translate-y-[-2px] ${isChecked
-                          ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/10'
-                          : 'border-gray-150 dark:border-gray-700/50 hover:bg-gray-50/50 dark:hover:bg-gray-800/10'
-                        }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${dsp.color} capitalize`}>
-                          {dsp.id.replace('_', ' ')}
-                        </span>
-                        <div className={`h-4.5 w-4.5 rounded-md border flex items-center justify-center transition-colors ${isChecked ? 'bg-rose-500 border-rose-500 text-white' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
-                          }`}>
-                          {isChecked && <Check size={10} strokeWidth={3} />}
-                        </div>
-                      </div>
-                      <span className="font-extrabold text-sm text-gray-900 dark:text-white block mt-3">
-                        {dsp.name}
-                      </span>
-                    </div>
-                  );
-                })}
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Select the platforms where you want your release to be distributed.
+                </p>
+
+                {platformsLoading ? (
+                  <div className="flex justify-center items-center py-10">
+                    <Loader2 size={32} className="animate-spin text-gray-400" />
+                  </div>
+                ) : availablePlatforms.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {availablePlatforms.map((platform) => {
+                      const isSelected = selectedPlatforms.includes(platform.id);
+                      return (
+                        <button
+                          type="button"
+                          key={platform.id}
+                          onClick={() => {
+                            setSelectedPlatforms(prev =>
+                              isSelected
+                                ? prev.filter(id => id !== platform.id)
+                                : [...prev, platform.id]
+                            );
+                          }}
+                          className={`relative flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                            isSelected
+                              ? 'border-rose-500 bg-rose-50 dark:bg-rose-500/10'
+                              : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 text-rose-500">
+                              <CheckCircle size={18} className="fill-current" />
+                            </div>
+                          )}
+                          <div className="h-12 w-12 rounded-full bg-white dark:bg-gray-800 shadow-sm flex items-center justify-center mb-3 overflow-hidden border border-gray-100 dark:border-gray-700">
+                            {platform.logo ? (
+                              <img src={`${getBackendUrl()}/${platform.logo}`} alt={platform.name} className="h-8 w-8 object-contain" />
+                            ) : (
+                              <Globe size={24} className="text-gray-400" />
+                            )}
+                          </div>
+                          <span className="text-xs font-bold text-center text-gray-900 dark:text-gray-100">
+                            {platform.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-10 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                    <Globe size={32} className="mx-auto text-gray-400 mb-2" />
+                    <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">No platforms available</p>
+                  </div>
+                )}
               </div>
 
               {/* Footer buttons */}
@@ -1399,17 +1505,26 @@ export default function CreateRelease() {
                 <button
                   type="button"
                   onClick={() => setCurrentStep(3)}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  disabled={platformsSaving}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                 >
                   <ChevronLeft size={14} /> Back
                 </button>
                 <button
                   type="button"
-                  onClick={handleSavePlatforms}
-                  disabled={loading}
-                  className="inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl shadow-lg disabled:opacity-50"
+                  disabled={platformsSaving || platformsLoading}
+                  onClick={handleSaveAndNextPlatforms}
+                  className="inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Next: Review <ChevronRight size={14} />
+                  {platformsSaving ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      Save & Next: Review <ChevronRight size={14} />
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -1503,26 +1618,6 @@ export default function CreateRelease() {
                   )}
                 </div>
 
-                {/* Platforms summary */}
-                <div className="space-y-2.5 pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                  <h3 className="font-bold text-xs text-gray-900 dark:text-white uppercase tracking-wider">Distribution Outlets ({selectedPlatforms.length})</h3>
-                  {selectedPlatforms.length === 0 ? (
-                    <p className="text-xs text-rose-500 font-semibold flex items-center gap-1">
-                      <XCircle size={14} /> At least 1 store must be selected. Go back to select stores.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedPlatforms.map(platId => {
-                        const platObj = DSP_PLATFORMS.find(p => p.id === platId);
-                        return (
-                          <span key={platId} className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${platObj?.color || 'bg-gray-100 text-gray-600'}`}>
-                            {platObj?.name || platId}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* Submit agreement */}
@@ -1622,7 +1717,7 @@ export default function CreateRelease() {
                 <button
                   type="button"
                   onClick={handleSubmitRelease}
-                  disabled={loading || tracks.length === 0 || selectedPlatforms.length === 0 || !agreeTerms || !isOriginalContent}
+                  disabled={loading || tracks.length === 0 || !agreeTerms || !isOriginalContent || selectedYoutubeCriteria.length === 0}
                   className="inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl shadow-lg disabled:opacity-50"
                 >
                   {loading ? (
@@ -1701,6 +1796,170 @@ export default function CreateRelease() {
           </div>
         </div>
       </div>
+
+      {/* Update Track Modal */}
+      {isUpdateModalOpen && updateTrackData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700/50">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Pencil size={20} className="text-emerald-500" /> Update Track
+              </h3>
+              <button onClick={closeUpdateModal} className="text-gray-400 hover:text-gray-500 transition-colors">
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5">
+              {/* Audio File Section */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Audio File</label>
+                {(!removeExistingAudio && !updateTrackFile) ? (
+                  <div className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900/50">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500 flex items-center justify-center">
+                        <Music size={20} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[200px] sm:max-w-[300px]">
+                          {updateTrackData.audioFile ? updateTrackData.audioFile.split('\\').pop().split('/').pop() : 'Existing Audio Track'}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Current track file</p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setRemoveExistingAudio(true)}
+                      className="text-xs font-bold text-rose-500 hover:text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
+                    >
+                      <Trash2 size={14} /> Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => document.getElementById('updateTrackFileInput')?.click()}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${updateTrackFile ? 'border-emerald-500/50 bg-emerald-50/5 dark:bg-emerald-950/5' : 'border-gray-300 dark:border-gray-700 hover:border-emerald-500/50 hover:bg-emerald-50/5'}`}
+                  >
+                    <input
+                      id="updateTrackFileInput"
+                      type="file"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setUpdateTrackFile(e.target.files[0]);
+                        }
+                      }}
+                      accept="audio/wav,audio/mp3,audio/mpeg,audio/x-wav"
+                      className="hidden"
+                    />
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center ${updateTrackFile ? 'bg-emerald-100 text-emerald-500' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
+                      <UploadCloud size={20} />
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-gray-900 dark:text-white block">
+                        {updateTrackFile ? updateTrackFile.name : 'Select new audio file'}
+                      </span>
+                      {!updateTrackFile && <span className="text-xs text-gray-400 mt-1 block">WAV file format recommended</span>}
+                    </div>
+                    {updateTrackFile && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUpdateTrackFile(null);
+                          setRemoveExistingAudio(false);
+                        }}
+                        className="mt-2 text-xs font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                      >
+                        Cancel & keep existing file
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Text Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Track Title *</label>
+                  <input
+                    type="text"
+                    value={updateTrackTitle}
+                    onChange={(e) => setUpdateTrackTitle(e.target.value)}
+                    className="input-field w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">ISRC (Optional)</label>
+                  <input
+                    type="text"
+                    value={updateIsrc}
+                    onChange={(e) => setUpdateIsrc(e.target.value)}
+                    className="input-field w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Featured Artists (Optional)</label>
+                  <input
+                    type="text"
+                    value={updateFeaturedArtists}
+                    onChange={(e) => setUpdateFeaturedArtists(e.target.value)}
+                    className="input-field w-full"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Lyrics (Optional)</label>
+                  <textarea
+                    rows={3}
+                    value={updateLyrics}
+                    onChange={(e) => setUpdateLyrics(e.target.value)}
+                    className="input-field w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Progress */}
+              {isUpdatingTrack && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-gray-600 dark:text-gray-400">Updating track...</span>
+                    <span className="font-extrabold text-emerald-500">{updateTrackProgress}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-150"
+                      style={{ width: `${updateTrackProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700/50 flex items-center justify-end gap-3 bg-gray-50/50 dark:bg-gray-800/50">
+              <button
+                type="button"
+                onClick={closeUpdateModal}
+                disabled={isUpdatingTrack}
+                className="px-5 py-2.5 rounded-xl font-bold text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateTrackSubmit}
+                disabled={isUpdatingTrack}
+                className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUpdatingTrack ? (
+                  <><Loader2 size={14} className="animate-spin" /> Saving...</>
+                ) : (
+                  <><Save size={14} /> Save Changes</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

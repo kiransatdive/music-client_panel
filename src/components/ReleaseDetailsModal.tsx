@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { getBackendUrl } from '../utils/config';
-import { X, Music, Disc, Clock } from 'lucide-react';
+import { X, Music, Disc, Clock, Globe } from 'lucide-react';
 
 interface ReleaseDetailsModalProps {
   isOpen: boolean;
@@ -111,7 +111,22 @@ export default function ReleaseDetailsModal({ isOpen, onClose, releaseId }: Rele
                 </div>
               </div>
 
-
+              {/* Platforms Section */}
+              {details.platforms && details.platforms.length > 0 && (
+                <div className="pt-4 border-t border-slate-100 dark:border-dark-border/40">
+                  <div className="flex items-center gap-2 mb-3 text-slate-700 dark:text-slate-300">
+                    <Globe size={18} />
+                    <h4 className="text-md font-bold">Distribution Platforms</h4>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {details.platforms.map((platform: any) => (
+                      <span key={platform.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 text-xs font-bold capitalize">
+                        {platform.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Tracks Section */}
               <div>
