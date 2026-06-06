@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { DollarSign, TrendingUp, Download, ArrowUpRight } from 'lucide-react';
+import { DollarSign, TrendingUp, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getBackendUrl } from '../utils/config';
 
 interface RevenueData {
   month: string;
@@ -9,18 +10,13 @@ interface RevenueData {
   streams: number;
 }
 
-const mockPlatforms = [
-  { name: 'Spotify', percentage: 48, revenue: 408.00, streams: 96000, color: 'bg-emerald-500' },
-  { name: 'Apple Music', percentage: 30, revenue: 255.00, streams: 60000, color: 'bg-rose-500' },
-  { name: 'YouTube Music', percentage: 14, revenue: 119.00, streams: 28000, color: 'bg-red-600' },
-  { name: 'Amazon Music', percentage: 8, revenue: 68.00, streams: 16000, color: 'bg-sky-500' },
-];
-
 export default function Revenue() {
   const [data, setData] = useState<RevenueData[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [totalStreams, setTotalStreams] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   useEffect(() => {
     fetchRevenueData();
@@ -28,10 +24,54 @@ export default function Revenue() {
 
   const fetchRevenueData = async () => {
     try {
-      const response = await axios.get('/api/release/revenue');
-      setData(response.data.monthly || []);
-      setTotalRevenue(response.data.totalRevenue || 0);
-      setTotalStreams(response.data.totalStreams || 0);
+      const token = localStorage.getItem('token');
+      const reqConfig = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      const response = await axios.get(`${getBackendUrl()}/api/releases/stats`, reqConfig);
+      
+      if (response.data && response.data.success && response.data.data) {
+        setTotalRevenue(response.data.data.total_income || 0);
+        setTotalStreams(response.data.data.live || 0);
+        
+        const { monthwiseRevenue = [], monthwiseLiveReleases = [] } = response.data.data;
+        const dataMap = new Map<string, { month: string; revenue: number; streams: number; timestamp: number }>();
+        
+        const getMonthInfo = (m: string) => {
+          let date = new Date();
+          if (/^\d+$/.test(m)) {
+            date = new Date(1899, 11, 30);
+            date.setDate(date.getDate() + parseInt(m, 10));
+          } else {
+            date = new Date(m + '-01');
+          }
+          if (isNaN(date.getTime())) {
+            return { label: m, timestamp: 0 };
+          }
+          return {
+            label: date.toLocaleString('default', { month: 'short' }) + ' ' + date.getFullYear().toString().slice(-2),
+            timestamp: date.getTime(),
+          };
+        };
+
+        monthwiseRevenue.forEach((item: any) => {
+          if (!item.month) return;
+          const { label, timestamp } = getMonthInfo(item.month);
+          if (!dataMap.has(label)) {
+            dataMap.set(label, { month: label, revenue: 0, streams: 0, timestamp });
+          }
+          dataMap.get(label)!.revenue += parseFloat(item.income || item.revenue) || 0;
+        });
+
+        monthwiseLiveReleases.forEach((item: any) => {
+          if (!item.month) return;
+          const { label, timestamp } = getMonthInfo(item.month);
+          if (!dataMap.has(label)) {
+            dataMap.set(label, { month: label, revenue: 0, streams: 0, timestamp });
+          }
+          dataMap.get(label)!.streams += parseInt(item.count) || 0;
+        });
+
+        setData(Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp));
+      }
     } catch (error) {
       console.error('Failed to fetch revenue data');
     } finally {
@@ -39,8 +79,30 @@ export default function Revenue() {
     }
   };
 
-  const handleExportPDF = () => {
-    alert("Exporting financial statement to PDF...");
+  const totalPages = Math.ceil(data.length / itemsPerPage) || 1;
+  const currentData = data.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handleExportExcel = () => {
+    if (!data || data.length === 0) {
+      alert("No data available to export.");
+      return;
+    }
+
+    const headers = ["Statement Month", "Live Releases", "Earning Share ($)"];
+    const csvContent = [
+      headers.join(","),
+      ...data.map(item => `"${item.month}",${item.streams},${item.revenue.toFixed(2)}`)
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "statement_log.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -52,11 +114,11 @@ export default function Revenue() {
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">Track earnings and platform distribution statistics</p>
         </div>
         <button
-          onClick={handleExportPDF}
+          onClick={handleExportExcel}
           className="btn-primary inline-flex items-center gap-2 text-sm justify-center py-2.5"
         >
           <Download size={18} />
-          <span>Export PDF Statement</span>
+          <span>Export Excel Statement</span>
         </button>
       </div>
 
@@ -78,36 +140,26 @@ export default function Revenue() {
                   <DollarSign className="h-7 w-7" />
                 </div>
               </div>
-              <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-400">
-                <span className="text-emerald-500 font-bold inline-flex items-center">
-                  +12.4% <ArrowUpRight size={14} />
-                </span>
-                <span>compared to last statement period</span>
-              </div>
+
             </div>
 
             <div className="card hover:translate-y-[-2px]">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-slate-400 dark:text-slate-500 text-xs font-semibold uppercase tracking-wider">Total Accumulated Streams</span>
+                  <span className="text-slate-400 dark:text-slate-500 text-xs font-semibold uppercase tracking-wider">Total Live Releases</span>
                   <p className="text-4xl font-extrabold mt-1 text-slate-800 dark:text-white">{totalStreams.toLocaleString()}</p>
                 </div>
                 <div className="h-14 w-14 rounded-2xl bg-violet-50 dark:bg-violet-950/20 flex items-center justify-center text-violet-500 shadow-sm border border-violet-500/5">
                   <TrendingUp className="h-7 w-7" />
                 </div>
               </div>
-              <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-400">
-                <span className="text-emerald-500 font-bold inline-flex items-center">
-                  +8.7% <ArrowUpRight size={14} />
-                </span>
-                <span>growth trend in listener reach</span>
-              </div>
+
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             {/* Monthly Trend Area Chart */}
-            <div className="card lg:col-span-2">
+            <div className="card">
               <div className="mb-6">
                 <h2 className="text-xl font-bold text-slate-800 dark:text-white">Earnings Trend</h2>
                 <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">Monthly distribution performance</p>
@@ -120,10 +172,15 @@ export default function Revenue() {
                         <stop offset="5%" stopColor="#00aeef" stopOpacity={0.25}/>
                         <stop offset="95%" stopColor="#00aeef" stopOpacity={0}/>
                       </linearGradient>
+                      <linearGradient id="colorStreams" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25}/>
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(203, 213, 225, 0.1)" />
                     <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="left" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="right" orientation="right" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
                     <Tooltip
                       contentStyle={{ 
                         backgroundColor: 'rgba(15, 23, 42, 0.95)', 
@@ -133,33 +190,10 @@ export default function Revenue() {
                         fontSize: '13px'
                       }}
                     />
-                    <Area type="monotone" dataKey="revenue" stroke="#00aeef" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
+                    <Area yAxisId="left" type="monotone" dataKey="revenue" name="Revenue" stroke="#00aeef" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
+                    <Area yAxisId="right" type="monotone" dataKey="streams" name="Live Releases" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorStreams)" />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Platform Analytics Card */}
-            <div className="card">
-              <h2 className="text-xl font-bold mb-2 text-slate-800 dark:text-white">Store Share</h2>
-              <p className="text-sm text-slate-400 dark:text-slate-500 mb-6">Distribution across global DSPs</p>
-              
-              <div className="space-y-5">
-                {mockPlatforms.map((platform, idx) => (
-                  <div key={idx} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm font-semibold">
-                      <span className="text-slate-700 dark:text-slate-300">{platform.name}</span>
-                      <span className="text-slate-800 dark:text-white">{platform.percentage}%</span>
-                    </div>
-                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                      <div className={`h-full ${platform.color} rounded-full`} style={{ width: `${platform.percentage}%` }}></div>
-                    </div>
-                    <div className="flex justify-between text-[11px] text-slate-400 font-medium">
-                      <span>{platform.streams.toLocaleString()} streams</span>
-                      <span>${platform.revenue.toFixed(2)}</span>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </div>
@@ -176,13 +210,13 @@ export default function Revenue() {
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-dark-border bg-slate-50 dark:bg-dark-bg/60">
                     <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-slate-400">Statement Month</th>
-                    <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">Streams Net</th>
+                    <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">Live Releases</th>
                     <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">Earning Share</th>
                     <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-slate-400 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-dark-border/40">
-                  {data.map((item, index) => (
+                  {currentData.map((item, index) => (
                     <tr key={index} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
                       <td className="py-4 px-6 text-slate-700 dark:text-slate-300 font-bold">{item.month}</td>
                       <td className="py-4 px-6 text-right text-slate-600 dark:text-slate-400 font-semibold font-mono text-sm">
@@ -201,6 +235,34 @@ export default function Revenue() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {data.length > itemsPerPage && (
+              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-dark-border/40">
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, data.length)} of {data.length} entries
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-lg border border-slate-200 dark:border-dark-border hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-slate-600 dark:text-slate-300"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-lg border border-slate-200 dark:border-dark-border hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-slate-600 dark:text-slate-300"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

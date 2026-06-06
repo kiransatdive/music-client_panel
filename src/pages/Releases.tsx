@@ -385,7 +385,7 @@ export default function Releases() {
 
               {/* Bottom tag & action */}
               <div className="mt-4 pt-4 border-t border-slate-100 dark:border-dark-border/20 flex items-center justify-between">
-                <span className={`inline-flex justify-center w-28 flex-shrink-0 items-center gap-1.5 px-2 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold border ${getStatusBadgeClass(release.status)}`}>
+                <span className={`inline-flex justify-center w-28 flex-shrink-0 items-center gap-1.5 px-2 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold border ${getStatusBadgeClass(release.status)}`}>
                   {getStatusIcon(release.status)}
                   <span className="truncate">{release.status.replace('_', ' ')}</span>
                 </span>
@@ -487,7 +487,7 @@ export default function Releases() {
                 </div>
 
                 <div className="w-32 hidden sm:flex justify-center pr-4">
-                  <span className={`inline-flex justify-center w-28 flex-shrink-0 items-center gap-1.5 px-2 py-1 rounded-full text-[9px] uppercase tracking-wider font-bold border ${getStatusBadgeClass(release.status)}`}>
+                  <span className={`inline-flex justify-center w-28 flex-shrink-0 items-center gap-1.5 px-2 py-1 rounded-md text-[9px] uppercase tracking-wider font-bold border ${getStatusBadgeClass(release.status)}`}>
                     {getStatusIcon(release.status)}
                     <span className="truncate">{release.status.replace('_', ' ')}</span>
                   </span>

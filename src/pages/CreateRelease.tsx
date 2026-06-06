@@ -6,7 +6,7 @@ import { getBackendUrl } from '../utils/config';
 import {
   FileText, Music, Upload, CheckCircle, Globe,
   ChevronRight, ChevronLeft, RotateCcw, XCircle, Loader2, Info, Sparkles,
-  Play, Pause, Trash2, Image, Check, Volume2, UploadCloud, Save, Pencil
+  Play, Pause, Trash2, Image, Check, Volume2, UploadCloud, Save, Pencil, Link
 } from 'lucide-react';
 
 interface ReleaseFormInputs {
@@ -82,6 +82,12 @@ export default function CreateRelease() {
   const [selectedYoutubeCriteria, setSelectedYoutubeCriteria] = useState<number[]>([]);
   const [youtubeCriteriaList, setYoutubeCriteriaList] = useState<{ id: number; text: string }[]>([]);
 
+  // Whitelist State
+  const [whitelistCategory, setWhitelistCategory] = useState('SOCIAL_MEDIA');
+  const [whitelistPlatform, setWhitelistPlatform] = useState('');
+  const [whitelistDomain, setWhitelistDomain] = useState('');
+  const [whitelistSubmitting, setWhitelistSubmitting] = useState(false);
+
   // Platforms State
   const [availablePlatforms, setAvailablePlatforms] = useState<any[]>([]);
   const [selectedPlatforms, setSelectedPlatforms] = useState<number[]>([]);
@@ -94,13 +100,22 @@ export default function CreateRelease() {
   const artworkInputRef = useRef<HTMLInputElement>(null);
 
   // Stepper steps configuration
-  const steps = [
-    { number: 1, name: 'Release Details', desc: 'Title, Genre & Basic Metadata', icon: FileText, active: currentStep === 1 },
-    { number: 2, name: 'Upload Tracks', desc: 'WAV Audio Files', icon: Music, active: currentStep === 2 },
-    { number: 3, name: 'Upload Artwork', desc: 'Square JPG/PNG image', icon: Upload, active: currentStep === 3 },
-    { number: 4, name: 'Select Platforms', desc: 'Distribution Platforms', icon: Globe, active: currentStep === 4 },
-    { number: 5, name: 'Review & Submit', desc: 'Final Verification', icon: CheckCircle, active: currentStep === 5 },
+  const stepsConfig = [
+    { id: 'details', name: 'Release Details', desc: 'Title, Genre & Basic Metadata', icon: FileText },
+    { id: 'tracks', name: 'Upload Tracks', desc: 'WAV Audio Files', icon: Music },
+    { id: 'artwork', name: 'Upload Artwork', desc: 'Square JPG/PNG image', icon: Upload },
+    ...(!id ? [{ id: 'whitelist', name: 'Whitelist Domain', desc: 'Submit Domain for Whitelist', icon: Link }] : []),
+    { id: 'platforms', name: 'Select Platforms', desc: 'Distribution Platforms', icon: Globe },
+    { id: 'review', name: 'Review & Submit', desc: 'Final Verification', icon: CheckCircle },
   ];
+
+  const steps = stepsConfig.map((s, index) => ({
+    ...s,
+    number: index + 1,
+    active: currentStep === index + 1
+  }));
+
+  const activeStepId = steps[currentStep - 1]?.id || 'details';
 
   // Initialize React Hook Form
   const {
@@ -351,7 +366,7 @@ export default function CreateRelease() {
             });
           }
           triggerToast(response.data.message || 'Release details updated!', 'success');
-          setCurrentStep(2);
+          setCurrentStep(currentStep + 1);
         } else {
           throw new Error(response.data?.message || 'Failed to update release details');
         }
@@ -377,7 +392,7 @@ export default function CreateRelease() {
           // Programmatically update the URL path without reloading the SPA
           window.history.pushState(null, '', `/releases/${newId}`);
 
-          setCurrentStep(2);
+          setCurrentStep(currentStep + 1);
         } else if (response.data && response.data.trackId) {
           // Alternative API format
           const newId = response.data.releaseId || response.data.trackId;
@@ -385,7 +400,7 @@ export default function CreateRelease() {
           triggerToast('Release created successfully!', 'success');
           localStorage.removeItem('create_release_draft');
           window.history.pushState(null, '', `/releases/${newId}`);
-          setCurrentStep(2);
+          setCurrentStep(currentStep + 1);
         }
       }
     } catch (err: any) {
@@ -405,7 +420,7 @@ export default function CreateRelease() {
         triggerToast('Please add at least one track before proceeding.', 'error');
         return;
       }
-      setCurrentStep(3);
+      setCurrentStep(currentStep + 1);
       return;
     }
 
@@ -452,7 +467,7 @@ export default function CreateRelease() {
       setPendingTracks([]);
       
       await fetchReleaseDetails(activeId);
-      setCurrentStep(3);
+      setCurrentStep(currentStep + 1);
     } catch (err: any) {
       console.error(err);
       const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to save tracks';
@@ -474,7 +489,7 @@ export default function CreateRelease() {
     }
 
     if (!artworkFile) {
-      setCurrentStep(4);
+      setCurrentStep(currentStep + 1);
       return;
     }
 
@@ -521,13 +536,55 @@ export default function CreateRelease() {
 
       // Refresh details
       await fetchReleaseDetails(activeId);
-      setCurrentStep(4);
+      setCurrentStep(currentStep + 1);
     } catch (err: any) {
       console.error(err);
       const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to upload artwork';
       triggerToast(errMsg, 'error');
     } finally {
       setArtworkUploading(false);
+    }
+  };
+
+  // Save and Next Whitelist
+  const handleSaveAndNextWhitelist = async () => {
+    // If empty, skip
+    if (!whitelistPlatform && !whitelistDomain) {
+      setCurrentStep(currentStep + 1);
+      return;
+    }
+
+    if (!whitelistPlatform || !whitelistDomain) {
+      triggerToast('Please provide both platform name and domain, or leave both empty to skip.', 'error');
+      return;
+    }
+
+    setWhitelistSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const reqConfig = token ? { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } } : { headers: { 'Content-Type': 'application/json' } };
+      
+      const payload = {
+        category: whitelistCategory,
+        platformName: whitelistPlatform,
+        domain: whitelistDomain
+      };
+
+      // Since release is associated with artist, pass artistId if available or it will be handled by backend from token
+      const res = await axios.post(`${getBackendUrl()}/api/artist/whitelist`, payload, reqConfig);
+      
+      if (res.data?.success || res.status === 200 || res.status === 201) {
+        triggerToast('Whitelist domain submitted successfully!', 'success');
+        setCurrentStep(currentStep + 1);
+      } else {
+        throw new Error(res.data?.message || 'Failed to submit whitelist domain');
+      }
+    } catch (err: any) {
+      console.error('Failed to submit whitelist:', err);
+      const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to submit whitelist domain';
+      triggerToast(errMsg, 'error');
+    } finally {
+      setWhitelistSubmitting(false);
     }
   };
 
@@ -554,7 +611,7 @@ export default function CreateRelease() {
       
       if (res.data?.success || res.status === 200 || res.status === 201) {
         triggerToast('Platforms selected successfully!', 'success');
-        setCurrentStep(5);
+        setCurrentStep(currentStep + 1);
       } else {
         throw new Error(res.data?.message || 'Failed to save platforms');
       }
@@ -916,7 +973,7 @@ export default function CreateRelease() {
               <span className="text-[10px] text-gray-400 mt-0.5 max-w-[120px] opacity-60 leading-tight">
                 {st.desc}
               </span>
-              {st.number < 5 && (
+              {st.number < steps.length && (
                 <div className="absolute top-[34px] right-[-15px] hidden lg:block opacity-40">
                   <ChevronRight size={14} className="text-gray-400" />
                 </div>
@@ -932,7 +989,7 @@ export default function CreateRelease() {
           {currentStep}
         </div>
         <div>
-          <span className="text-xs font-bold text-rose-500 block">Step {currentStep} of 5</span>
+          <span className="text-xs font-bold text-rose-500 block">Step {currentStep} of {steps.length}</span>
           <span className="text-sm font-extrabold text-gray-900 dark:text-white">{steps[currentStep - 1].name} (Active)</span>
         </div>
       </div>
@@ -942,14 +999,14 @@ export default function CreateRelease() {
         <div className="lg:col-span-2">
 
           {/* STEP 1: Release Details Form */}
-          {currentStep === 1 && (
+          {activeStepId === 'details' && (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700/80 p-6 space-y-6">
                 <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/50">
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     Release Metadata
                   </h2>
-                  <span className="text-[10px] bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-200/50 dark:border-yellow-800/20 font-bold uppercase tracking-wider">
+                  <span className="text-[10px] bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded-md border border-yellow-200/50 dark:border-yellow-800/20 font-bold uppercase tracking-wider">
                     {releaseData?.status || 'Draft'} Status
                   </span>
                 </div>
@@ -1055,19 +1112,6 @@ export default function CreateRelease() {
                     )}
                   </div>
 
-                  {/* Label Name */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Label Name *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Kiran Music"
-                      className={`input-field w-full py-2.5 px-3.5 ${errors.labelName ? 'border-rose-500' : ''}`}
-                      {...register('labelName', { required: 'Label name is required' })}
-                    />
-                    {errors.labelName && (
-                      <p className="text-[11px] text-rose-500 mt-1 font-semibold">{errors.labelName.message}</p>
-                    )}
-                  </div>
 
                   {/* UPC (Optional, numeric only) */}
                   <div className="md:col-span-2">
@@ -1132,7 +1176,7 @@ export default function CreateRelease() {
           )}
 
           {/* STEP 2: Upload Tracks Form */}
-          {currentStep === 2 && (
+          {activeStepId === 'tracks' && (
             <div className="space-y-6">
               <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700/80 p-6 space-y-6">
                 <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/50">
@@ -1337,7 +1381,7 @@ export default function CreateRelease() {
           )}
 
           {/* STEP 3: Upload Artwork Form */}
-          {currentStep === 3 && (
+          {activeStepId === 'artwork' && (
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700/80 p-6 space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/50">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -1423,7 +1467,7 @@ export default function CreateRelease() {
                     </>
                   ) : (
                     <>
-                      Save & Next: Platforms <ChevronRight size={14} />
+                      Save & Next: Whitelist Domain <ChevronRight size={14} />
                     </>
                   )}
                 </button>
@@ -1431,8 +1475,93 @@ export default function CreateRelease() {
             </div>
           )}
 
-          {/* STEP 4: Select Platforms */}
-          {currentStep === 4 && (
+          {/* STEP 4: Whitelist Domain */}
+          {activeStepId === 'whitelist' && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700/80 p-6 space-y-6">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/50">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Link className="text-rose-500" size={20} /> Whitelist Domain
+                </h2>
+                <span className="text-[10px] bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full border border-blue-200/50 dark:border-blue-800/20 font-bold uppercase tracking-wider">
+                  Optional
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Submit a domain for whitelisting (e.g. social media, streaming platform, or website domain). This step is optional.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Category *</label>
+                    <select
+                      value={whitelistCategory}
+                      onChange={(e) => setWhitelistCategory(e.target.value)}
+                      className="input-field w-full py-2.5 px-3.5 bg-white dark:bg-gray-800"
+                    >
+                      <option value="SOCIAL_MEDIA">Social Media</option>
+                      <option value="STREAMING_PLATFORM">Streaming Platform</option>
+                      <option value="WEBSITE_DOMAIN">Website Domain</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Platform Name *</label>
+                    <input
+                      type="text"
+                      value={whitelistPlatform}
+                      onChange={(e) => setWhitelistPlatform(e.target.value)}
+                      placeholder="e.g. Instagram"
+                      className="input-field w-full py-2.5 px-3.5"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Domain *</label>
+                    <input
+                      type="text"
+                      value={whitelistDomain}
+                      onChange={(e) => setWhitelistDomain(e.target.value)}
+                      placeholder="e.g. instagram.com"
+                      className="input-field w-full py-2.5 px-3.5"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer buttons */}
+              <div className="flex items-center justify-between pt-5 border-t border-gray-100 dark:border-gray-700/50">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(3)}
+                  disabled={whitelistSubmitting}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <ChevronLeft size={14} /> Back
+                </button>
+                <button
+                  type="button"
+                  disabled={whitelistSubmitting}
+                  onClick={handleSaveAndNextWhitelist}
+                  className="inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {whitelistSubmitting ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Submitting...
+                    </>
+                  ) : (
+                    <>
+                      {whitelistPlatform && whitelistDomain ? 'Save & Next: Platforms' : 'Skip & Next: Platforms'} <ChevronRight size={14} />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 5: Select Platforms */}
+          {activeStepId === 'platforms' && (
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700/80 p-6 space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/50">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -1530,8 +1659,8 @@ export default function CreateRelease() {
             </div>
           )}
 
-          {/* STEP 5: Review & Submit Form */}
-          {currentStep === 5 && (
+          {/* STEP 6: Review & Submit Form */}
+          {activeStepId === 'review' && (
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700/80 p-6 space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/50">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -1580,10 +1709,6 @@ export default function CreateRelease() {
                       <div>
                         <span className="font-semibold text-gray-400 block uppercase text-[10px]">Language</span>
                         <strong className="text-gray-800 dark:text-white text-xs">{watchedFields.language || 'N/A'}</strong>
-                      </div>
-                      <div>
-                        <span className="font-semibold text-gray-400 block uppercase text-[10px]">Label</span>
-                        <strong className="text-gray-800 dark:text-white text-xs">{watchedFields.labelName || 'N/A'}</strong>
                       </div>
                       <div>
                         <span className="font-semibold text-gray-400 block uppercase text-[10px]">Release Date</span>
@@ -1709,7 +1834,7 @@ export default function CreateRelease() {
               <div className="flex items-center justify-between pt-5 border-t border-gray-100 dark:border-gray-700/50">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(4)}
+                  onClick={() => setCurrentStep(5)}
                   className="inline-flex items-center justify-center gap-1.5 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
                   <ChevronLeft size={14} /> Back

@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { getBackendUrl } from '../utils/config';
-import { Disc, DollarSign, Clock, TrendingUp, ArrowUpRight, Calendar, Star, User } from 'lucide-react';
+import { Disc, DollarSign, Clock, TrendingUp, Calendar } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Link } from 'react-router-dom';
+
 
 interface DashboardStats {
   totalReleases: number;
@@ -205,7 +205,7 @@ export default function Dashboard() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
                 <h2 className="text-xl font-bold text-slate-800 dark:text-white">Performance Analytics</h2>
-                <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">Growth trends over the last 6 months</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">Growth trends</p>
               </div>
               <div className="flex items-center gap-4 text-xs font-semibold">
                 <span className="flex items-center gap-1.5 text-slate-500">
@@ -248,73 +248,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Quick Actions */}
-            <div className="card">
-              <h2 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Quick Actions</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Link
-                  to="/releases"
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl border border-slate-100 dark:border-dark-border/40 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-center transition-all duration-200 group"
-                >
-                  <div className="h-10 w-10 rounded-xl bg-rose-50 dark:bg-rose-950/20 text-rose-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Disc size={20} />
-                  </div>
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">My Releases</span>
-                </Link>
 
-                <Link
-                  to="/revenue"
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl border border-slate-100 dark:border-dark-border/40 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-center transition-all duration-200 group"
-                >
-                  <div className="h-10 w-10 rounded-xl bg-violet-50 dark:bg-violet-950/20 text-violet-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <DollarSign size={20} />
-                  </div>
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Revenue Logs</span>
-                </Link>
-
-                <Link
-                  to="/profile"
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl border border-slate-100 dark:border-dark-border/40 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-center transition-all duration-200 group"
-                >
-                  <div className="h-10 w-10 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <User size={20} />
-                  </div>
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Edit Settings</span>
-                </Link>
-              </div>
-              <div className="mt-6">
-                <Link
-                  to="/releases/create"
-                  className="btn-primary flex items-center justify-center gap-2 w-full py-3 text-sm font-bold uppercase tracking-wider"
-                >
-                  <span>Create New Release</span>
-                  <ArrowUpRight size={16} />
-                </Link>
-              </div>
-            </div>
-
-            {/* Account Details */}
-            <div className="card">
-              <h2 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Account Status</h2>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-dark-border/20">
-                  <span className="text-sm text-slate-400 dark:text-slate-500 font-medium">Registered Email</span>
-                  <span className="text-sm text-slate-700 dark:text-slate-200 font-semibold">{user?.email}</span>
-                </div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-dark-border/20">
-                  <span className="text-sm text-slate-400 dark:text-slate-500 font-medium">Artist Identifier</span>
-                  <span className="text-sm text-slate-700 dark:text-slate-200 font-semibold">{user?.artistProfile?.artist_name}</span>
-                </div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-dark-border/20">
-                  <span className="text-sm text-slate-400 dark:text-slate-500 font-medium">Verification Tier</span>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950/20 text-rose-500 border border-rose-500/10">
-                    <Star size={12} fill="currentColor" /> Verified Artist
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
         </>
       )}
     </div>
